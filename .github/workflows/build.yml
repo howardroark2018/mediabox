@@ -1,4 +1,4 @@
-name: Compile Media Box staging
+name: Compile and test Media Box staging
 on:
   push:
     branches: [main]
@@ -8,12 +8,24 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-test-only
+          MYSQL_DATABASE: mediabox_ci
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pci-test-only"
+          --health-interval=10s --health-timeout=5s --health-retries=15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install frontend dependencies
+      - name: Install PHP MySQL support
+        run: sudo apt-get update && sudo apt-get install -y php-cli php-mysql php-mbstring
+      - name: Install React dependencies
         working-directory: source
         run: npm install --no-audit --no-fund
       - name: Compile React
@@ -21,12 +33,24 @@ jobs:
         env:
           MEDIABOX_BASE: /mediabox-staging/
         run: npm run build
-      - name: PHP syntax check
+      - name: PHP lint
         run: php -l cpanel/api/index.php
-      - name: Verify compiled output
-        run: test -f cpanel/index.html && test -d cpanel/assets
-      - name: Create cPanel staging package
-        run: cd cpanel && zip -qr ../MediaBox-cPanel-Staging-Compiled.zip .
+      - name: MySQL schema integration
+        env:
+          MYSQL_PWD: ci-test-only
+        run: |
+          mysql -h 127.0.0.1 -u root mediabox_ci < database/schema.sql
+          mysql -h 127.0.0.1 -u root mediabox_ci -e "SHOW TABLES; SELECT COUNT(*) FROM events;"
+      - name: Verify release assets
+        run: |
+          test -f cpanel/index.html
+          test -d cpanel/assets
+          test -f cpanel/api/index.php
+          test -f database/schema.sql
+      - name: Package cPanel staging bundle
+        run: |
+          cp database/schema.sql cpanel/schema.sql
+          cd cpanel && zip -qr ../MediaBox-cPanel-Staging-Compiled.zip .
       - uses: actions/upload-artifact@v4
         with:
           name: MediaBox-cPanel-Staging-Compiled
