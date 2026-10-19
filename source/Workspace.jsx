@@ -1,3 +1,4 @@
+import './workspace.css';
 import React,{useEffect,useState} from 'react';
 export default function Workspace({events,selected,review,qr,csrf,api,loadEvents,loadReview,setStatus,moderate,createEvent,eventName,setEventName,busy}){
  const [tab,setTab]=useState('overview'),[metrics,setMetrics]=useState(null),[account,setAccount]=useState(null),[filter,setFilter]=useState('pending'),[chosen,setChosen]=useState([]),[rename,setRename]=useState(''),[oldPassword,setOldPassword]=useState(''),[newPassword,setNewPassword]=useState(''),[notice,setNotice]=useState('');
