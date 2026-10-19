@@ -104,4 +104,46 @@ if($action==='moderate'&&$method==='POST'){
  query($db,"UPDATE $type m JOIN events e ON e.id=m.event_id SET m.status=? WHERE m.id=? AND e.organization_id=?",[$status,(int)($p['id']??0),$org]);
  answer(200,['ok'=>true]);
 }
+
+if($action==='dashboard'&&$method==='GET'){
+ [$uid,$org]=host();
+ $counts=query($db,"SELECT COUNT(*) total,SUM(status='live') live,SUM(status='closed') closed FROM events WHERE organization_id=?",[$org])->fetch(PDO::FETCH_ASSOC);
+ $media=query($db,"SELECT COUNT(*) total,SUM(m.status='pending') pending FROM media m JOIN events e ON e.id=m.event_id WHERE e.organization_id=?",[$org])->fetch(PDO::FETCH_ASSOC);
+ $notes=query($db,"SELECT COUNT(*) total,SUM(g.status='pending') pending FROM guestbook g JOIN events e ON e.id=g.event_id WHERE e.organization_id=?",[$org])->fetch(PDO::FETCH_ASSOC);
+ $recent=query($db,"SELECT m.id,m.guest_name,m.status,m.created_at,e.name event_name,e.id event_id,'media' kind FROM media m JOIN events e ON e.id=m.event_id WHERE e.organization_id=? UNION ALL SELECT g.id,g.guest_name,g.status,g.created_at,e.name,e.id,'guestbook' FROM guestbook g JOIN events e ON e.id=g.event_id WHERE e.organization_id=? ORDER BY created_at DESC LIMIT 12",[$org,$org])->fetchAll(PDO::FETCH_ASSOC);
+ answer(200,['events'=>['total'=>(int)$counts['total'],'live'=>(int)$counts['live'],'closed'=>(int)$counts['closed']],'media'=>['total'=>(int)$media['total'],'pending'=>(int)$media['pending']],'guestbook'=>['total'=>(int)$notes['total'],'pending'=>(int)$notes['pending']],'recent'=>$recent]);
+}
+if($action==='account'&&$method==='GET'){
+ [$uid,$org]=host();
+ $row=query($db,'SELECT u.email,o.name organization FROM users u JOIN organizations o ON o.id=u.organization_id WHERE u.id=? AND u.organization_id=?',[$uid,$org])->fetch(PDO::FETCH_ASSOC);
+ if(!$row)answer(404,['error'=>'Account not found']);
+ answer(200,['account'=>$row]);
+}
+if($action==='change_password'&&$method==='POST'){
+ [$uid,$org]=host();$p=payload();
+ $current=(string)($p['current']??'');$next=(string)($p['next']??'');
+ if(strlen($next)<14||strlen($next)>256)answer(422,['error'=>'New password must be at least 14 characters']);
+ $row=query($db,'SELECT password_hash FROM users WHERE id=? AND organization_id=?',[$uid,$org])->fetch(PDO::FETCH_ASSOC);
+ if(!$row||!password_verify($current,$row['password_hash']))answer(403,['error'=>'Current password incorrect']);
+ query($db,'UPDATE users SET password_hash=? WHERE id=? AND organization_id=?',[password_hash($next,PASSWORD_DEFAULT),$uid,$org]);
+ session_regenerate_id(true);answer(200,['ok'=>true]);
+}
+if($action==='rename_event'&&$method==='POST'){
+ [$uid,$org]=host();$p=payload();$name=trim((string)($p['name']??''));
+ if(mb_strlen($name)<3||mb_strlen($name)>160)answer(422,['error'=>'Event name must be 3–160 characters']);
+ $q=query($db,'UPDATE events SET name=? WHERE id=? AND organization_id=?',[$name,(int)($p['id']??0),$org]);
+ if($q->rowCount()===0)answer(404,['error'=>'Event not found or unchanged']);
+ answer(200,['ok'=>true]);
+}
+if($action==='bulk_moderate'&&$method==='POST'){
+ [$uid,$org]=host();$p=payload();$type=(string)($p['type']??'');$status=(string)($p['status']??'');$ids=$p['ids']??[];
+ if(!in_array($type,['media','guestbook'],true)||!in_array($status,['approved','rejected'],true)||!is_array($ids)||count($ids)<1||count($ids)>100)answer(422,['error'=>'Invalid bulk request']);
+ $ids=array_values(array_unique(array_map('intval',$ids)));
+ if(min($ids)<1)answer(422,['error'=>'Invalid identifiers']);
+ $marks=implode(',',array_fill(0,count($ids),'?'));
+ $sql="UPDATE $type m JOIN events e ON e.id=m.event_id SET m.status=? WHERE e.organization_id=? AND m.id IN ($marks)";
+ $q=query($db,$sql,array_merge([$status,$org],$ids));
+ answer(200,['ok'=>true,'updated'=>$q->rowCount()]);
+}
+
 answer(404,['error'=>'Unknown endpoint']);
