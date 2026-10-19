@@ -19,12 +19,12 @@ function App(){
  const [events,setEvents]=useState([]),[eventName,setEventName]=useState(''),[selected,setSelected]=useState(null),[review,setReview]=useState({media:[],guestbook:[]});
  const [slug,setSlug]=useState(new URLSearchParams(location.search).get('event')||''),[publicData,setPublicData]=useState(null);
  const [guestName,setGuestName]=useState(''),[file,setFile]=useState(null),[message,setMessage]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[qr,setQr]=useState('');
- useEffect(()=>{req('csrf').then(x=>setCsrf(x.csrf)).catch(e=>setNotice(e.message));req('me').then(x=>{setAuth(x.authenticated);if(x.authenticated)loadEvents()}).catch(()=>{});},[]);
+ useEffect(()=>{(async()=>{try{const token=await req('csrf');setCsrf(token.csrf);const session=await req('me');setAuth(session.authenticated);if(session.authenticated)await loadEvents()}catch(e){setNotice(e.message)}})()},[]);
  useEffect(()=>{if(slug)loadPublic(slug)},[slug]);
  useEffect(()=>{if(selected)QRCode.toDataURL(location.origin+base+'?event='+encodeURIComponent(selected.slug),{width:320,margin:2}).then(setQr).catch(()=>setQr(''))},[selected]);
  async function loadEvents(){try{setEvents((await req('events')).events)}catch(e){setNotice(e.message)}}
  async function loadPublic(s){try{setPublicData(await req('public_event&slug='+encodeURIComponent(s)))}catch(e){setPublicData(null);setNotice(e.message)}}
- async function login(e){e.preventDefault();setBusy(true);try{const x=await req('login',{method:'POST',body:{email,password},csrf});setCsrf(x.csrf);setAuth(true);setPassword('');await loadEvents()}catch(e){setNotice(e.message)}finally{setBusy(false)}}
+ async function login(e){e.preventDefault();setBusy(true);setNotice('');try{const fresh=await req('csrf');setCsrf(fresh.csrf);let x;try{x=await req('login',{method:'POST',body:{email,password},csrf:fresh.csrf})}catch(err){if(!/CSRF validation failed/i.test(err.message))throw err;const retry=await req('csrf');setCsrf(retry.csrf);x=await req('login',{method:'POST',body:{email,password},csrf:retry.csrf})}setCsrf(x.csrf);setAuth(true);setPassword('');await loadEvents()}catch(e){setNotice(e.message)}finally{setBusy(false)}}
  async function createEvent(e){e.preventDefault();setBusy(true);try{await req('create_event',{method:'POST',body:{name:eventName},csrf});setEventName('');await loadEvents();setNotice('Event created')}catch(e){setNotice(e.message)}finally{setBusy(false)}}
  async function setStatus(status){try{await req('event_status',{method:'POST',body:{id:selected.id,status},csrf});setSelected({...selected,status});await loadEvents();setNotice('Event updated')}catch(e){setNotice(e.message)}}
  async function loadReview(ev){setSelected(ev);try{setReview(await req('moderation&event_id='+ev.id))}catch(e){setNotice(e.message)}}
