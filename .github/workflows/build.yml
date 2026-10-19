@@ -1,0 +1,33 @@
+name: Compile Media Box staging
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install frontend dependencies
+        working-directory: source
+        run: npm install --no-audit --no-fund
+      - name: Compile React
+        working-directory: source
+        env:
+          MEDIABOX_BASE: /mediabox-staging/
+        run: npm run build
+      - name: PHP syntax check
+        run: php -l cpanel/api/index.php
+      - name: Verify compiled output
+        run: test -f cpanel/index.html && test -d cpanel/assets
+      - name: Create cPanel staging package
+        run: cd cpanel && zip -qr ../MediaBox-cPanel-Staging-Compiled.zip .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MediaBox-cPanel-Staging-Compiled
+          path: MediaBox-cPanel-Staging-Compiled.zip
