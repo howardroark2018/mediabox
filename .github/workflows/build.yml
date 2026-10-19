@@ -35,6 +35,8 @@ jobs:
         run: npm run build
       - name: PHP lint
         run: php -l cpanel/api/index.php
+      - name: Bootstrap installer PHP syntax
+        run: php -l tools/bootstrap-admin-cli.php
       - name: MySQL schema integration
         env:
           MYSQL_PWD: ci-test-only
